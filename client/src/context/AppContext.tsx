@@ -1,0 +1,179 @@
+import { createContext, useContext, useEffect, useState } from "react";
+import {
+  initialState,
+  type FoodEntry,
+  type ActivityEntry,
+  type User,
+  type Credentials,
+} from "../types";
+import { useNavigate } from "react-router-dom";
+import api from "../configs/api";
+import toast from "react-hot-toast";
+
+const AppContext = createContext(initialState);
+
+export const AppProvider = ({ children }: { children: React.ReactNode }) => {
+  const navigate = useNavigate();
+  const [user, setUser] = useState<User>(null);
+  const [isUserFetched, setIsUserFetched] = useState(
+    localStorage.getItem("token") ? false : true
+  );
+  const [onboardingCompleted, setOnboardingCompleted] = useState(false);
+  const [allFoodLogs, setAllFoodLogs] = useState<FoodEntry[]>([]);
+  const [allActivityLogs, setAllActivityLogs] = useState<ActivityEntry[]>([]);
+
+  // ✅ SIGNUP
+  const signup = async (credentials: Credentials) => {
+    try {
+      const { data } = await api.post("/api/auth/local/register", credentials);
+
+      setUser({ ...data.user, token: data.jwt });
+
+      const isCompleted = !!(
+        data?.user?.age &&
+        data?.user?.weight &&
+        data?.user?.goal
+      );
+      setOnboardingCompleted(isCompleted);
+
+      localStorage.setItem("token", data.jwt);
+      api.defaults.headers.common["Authorization"] = `Bearer ${data.jwt}`;
+    } catch (error: any) {
+      console.log(error);
+      toast.error(
+        error?.response?.data?.error?.message || error?.message
+      );
+    }
+  };
+
+  // ✅ LOGIN 
+  const login = async (credentials: Credentials) => {
+    try {
+      const { data } = await api.post("/api/auth/local", {
+        identifier: credentials.email,
+        password: credentials.password, 
+      });
+
+      setUser({ ...data.user, token: data.jwt });
+
+      const isCompleted = !!(
+        data?.user?.age &&
+        data?.user?.weight &&
+        data?.user?.goal
+      );
+      setOnboardingCompleted(isCompleted);
+
+      localStorage.setItem("token", data.jwt);
+      api.defaults.headers.common["Authorization"] = `Bearer ${data.jwt}`;
+    } catch (error: any) {
+      console.log(error);
+      toast.error(
+        error?.response?.data?.error?.message || error?.message
+      );
+    }
+  };
+
+  // ✅ FETCH USER
+  const fetchUser = async (token: string) => {
+    try {
+      const { data } = await api.get("/api/users/me", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      setUser({ ...data, token });
+
+      const isCompleted = !!(
+        data?.age &&
+        data?.weight &&
+        data?.goal
+      );
+      setOnboardingCompleted(isCompleted);
+
+      api.defaults.headers.common["Authorization"] = `Bearer ${token}`;
+    } catch (error: any) {
+      console.log(error);
+      toast.error(
+        error?.response?.data?.error?.message || error?.message
+      );
+    }
+
+    setIsUserFetched(true);
+  };
+
+  // ✅ FOOD LOGS
+  const fetchFoodLogs = async (token: string) => {
+    try {
+      const { data } = await api.get("/api/food-logs", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      setAllFoodLogs(data);
+    } catch (error: any) {
+      console.log(error);
+      toast.error(
+        error?.response?.data?.error?.message || error?.message
+      );
+    }
+  };
+
+  // ✅ ACTIVITY LOGS
+  const fetchActivityLogs = async (token: string) => {
+    try {
+      const { data } = await api.get("/api/activity-logs", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      setAllActivityLogs(data);
+    } catch (error: any) {
+      console.log(error);
+      toast.error(
+        error?.response?.data?.error?.message || error?.message
+      );
+    }
+  };
+
+  // ✅ LOGOUT
+  const logout = () => {
+    localStorage.removeItem("token");
+    setUser(null);
+    setOnboardingCompleted(false);
+    api.defaults.headers.common["Authorization"] = "";
+    navigate("/");
+  };
+
+  // ✅ INITIAL LOAD
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    if (token) {
+      (async () => {
+        await fetchUser(token);
+        await fetchFoodLogs(token);
+        await fetchActivityLogs(token);
+      })();
+    }
+  }, []);
+
+  const value = {
+    user,
+    setUser,
+    isUserFetched,
+    fetchUser,
+    signup,
+    login,
+    logout,
+    onboardingCompleted,
+    setOnboardingCompleted,
+    allFoodLogs,
+    allActivityLogs,
+    setAllActivityLogs,
+    setAllFoodLogs,
+  };
+
+  return (
+    <AppContext.Provider value={value}>
+      {children}
+    </AppContext.Provider>
+  );
+};
+
+export const useAppContext = () => useContext(AppContext);
